@@ -104,6 +104,18 @@ public class EtlScript {
                     row: 1,
                 ]
             ],
+            [
+                sheetName: "微通道轴向压降",
+                from:  [
+                        column: "A",
+                        startRow: 34,
+                        endRow: 43,
+                ],
+                to:  [
+                        column: "H",
+                        row: 1,
+                ]
+            ],
     ]
 
     def static void extracFromFolder(String folderPath){
@@ -131,12 +143,14 @@ public class EtlScript {
 
     def static int extractFromExcel(String inputExcelPath, excelSpecifications, Sheet outputSheet, int startRow) {
         try {
+            println inputExcelPath
             int maxRow = 0
+            println inputExcelPath
             Workbook wb = WorkbookFactory.create(new File(inputExcelPath))
             excelSpecifications.each {
                 specification ->
                     maxRow = Math.max(
-                            extractFromSheet(wb.getSheet(specification.sheetName), specification, outputSheet, startRow),
+                            cpColDataBetweenSheet(wb.getSheet(specification.sheetName), specification, outputSheet, startRow),
                             maxRow)
             }
             return maxRow
@@ -145,29 +159,47 @@ public class EtlScript {
         }
     }
 
-    def static int extractFromSheet(Sheet sheet, specification, Sheet outputExcel, int startRow) {
-        def fromCol = computeColumnNum(specification.from.column)
+    def static int cpColDataBetweenSheet(Sheet inputSheet, specification, Sheet outputExcel, int startRow) {
+        def fromCol = computeColumnNumFromAlphabets(specification.from.column)
         def toRowNum=0
         for (int r = specification.from.startRow; r <= specification.from.endRow; r++) {
-            Row row = sheet.getRow(r - 1)
-            double fromValue = row.getCell(fromCol - 1).getNumericCellValue()
-
             Row toRow = outputExcel.getRow(startRow + toRowNum + specification.to.row)
             if(toRow==null){
                 toRow=outputExcel.createRow(startRow + toRowNum + specification.to.row)
             }
-            def toCol = computeColumnNum(specification.to.column)
+            def toCol = computeColumnNumFromAlphabets(specification.to.column)
             Cell toCell = toRow.getCell(toCol-1)
             if(toCell==null){
                 toCell=toRow.createCell(toCol-1)
             }
-            toCell.setCellValue(fromValue)
+
+
+            Row row = inputSheet.getRow(r - 1)
+            println specification
+            try {
+                double fromValue = row.getCell(fromCol - 1).getNumericCellValue()
+                toCell.setCellValue(fromValue)
+            }catch (IllegalStateException e){
+                toCell.setCellErrorValue(row.getCell(fromCol-1).getErrorCellValue())
+            }
+
+
+
             toRowNum++
         }
         return specification.from.endRow-specification.from.startRow+1
     }
 
-    def static int computeColumnNum(String alphabetCol) {
+    /**
+     * 'A'-> 1
+     * 'Z'-> 26
+     * 'AA'->26+1=27
+     * 'AB'->26+2=28
+     * ......
+     * @param alphabetCol
+     * @return
+     */
+    def static int computeColumnNumFromAlphabets(String alphabetCol) {
         int column = 0;
         for (int i = 0; i < alphabetCol.size(); i++) {
             column = column * 26 + (alphabetCol.toLowerCase().charAt(i) - 'a'.charAt(0) + 1)
